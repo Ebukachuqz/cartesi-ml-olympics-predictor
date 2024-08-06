@@ -46,4 +46,4 @@ def build_and_export_model(teams_file, output_file):
     print("Model exported successfully")
 
 # Example usage:
-build_and_export_model("../teams.csv", "model.py")
+build_and_export_model("../teams.csv", "../model.py")
