@@ -1,5 +1,6 @@
 from os import environ
-import model
+import json
+from model import score
 import json
 import traceback
 import logging
@@ -19,33 +20,19 @@ def hex2str(hex):
 def str2hex(str):
     return "0x" + str.encode("utf-8").hex()
 
-# Function to make predictions
-def predict_country(country_code):
-    input_data = {"team": country_code}
-    formatted_input = format(input_data)
-    prediction = model.score(formatted_input)
-    return prediction
+# Load the team mapping from the JSON file
+with open("team_mapping.json", "r") as file:
+    team_mapping = json.load(file)
 
-# Function to format input data
-def format(input):
-    formatted_input = {}
-    for key in input.keys():
-        if key in model.columns:
-            formatted_input[key] = input[key]
-        else:
-            ohe_key = key + "_" + str(input[key])
-            ohe_key_unknown = key + "_nan"
-            if ohe_key in model.columns:
-                formatted_input[ohe_key] = 1
-            else:
-                formatted_input[ohe_key_unknown] = 1
-    output = []
-    for column in model.columns:
-        if column in formatted_input:
-            output.append(formatted_input[column])
-        else:
-            output.append(0)
-    return output
+def format_input(input_json):
+    # Map the 'team' (country code) to its corresponding numeric code
+    formatted_input = [
+        team_mapping.get(input_json["team"], -1),  # Convert team code, use -1 for unknown teams
+        input_json["athletes"],                   # Number of athletes
+        input_json["prev_medals"]                 # Previous medals won
+    ]
+    return formatted_input
+
 
 # Initialize the array to store user inputs and predictions
 user_predictions = []
@@ -55,34 +42,46 @@ def handle_advance(data):
     status = "accept"
     try:
         input_data = hex2str(data["payload"])
+        sender = input_json["metadata"]["msg_sender"]
         input_json = json.loads(input_data)
-        country_code = input_json["country_code"]
-        sender = input_json["sender"]
+
+        # format input data
+        formatted_data = format_input(input_json)
+
+        # Use the formatted data to make a prediction
+        prediction = score(formatted_data)
         
-        prediction = predict_country(country_code)
-        
-        # Store sender, country code input, and prediction
+        # Store sender, input, and prediction
         user_predictions.append({
             "sender": sender,
-            "country_code": country_code,
+            "input": input_json,
             "prediction": prediction
         })
         
         output = str2hex(str(prediction))
+        logger.info(f"Adding notice with payload: {predicted}")
         response = requests.post(rollup_server + "/notice", json={"payload": output})
+        logger.info(f"Received notice status {response.status_code} body {response.content}")
     except Exception as e:
         status = "reject"
         msg = f"Error processing data {data}\n{traceback.format_exc()}"
+        logger.error(msg)
         response = requests.post(rollup_server + "/report", json={"payload": str2hex(msg)})
+        logger.info(f"Received report status {response.status_code} body {response.content}")
+    
     return status
 
 def handle_inspect(data):
+    logger.info(f"Received inspect request data {data}")
+    logger.info("Adding report")
+
     response_data = {
         "count": len(user_predictions),
         "predictions": user_predictions
     }
     response_payload = str2hex(json.dumps(response_data))
     response = requests.post(rollup_server + "/report", json={"payload": response_payload})
+    logger.info(f"Received report status {response.status_code}")
     return "accept"
 
 handlers = {
@@ -93,11 +92,14 @@ handlers = {
 finish = {"status": "accept"}
 
 while True:
+    logger.info("Sending finish")
     response = requests.post(rollup_server + "/finish", json=finish)
+    logger.info(f"Received finish status {response.status_code}")
     if response.status_code == 202:
-        pass
+        logger.info("No pending rollup request, trying again")
     else:
         rollup_request = response.json()
         data = rollup_request["data"]
+        
         handler = handlers[rollup_request["request_type"]]
         finish["status"] = handler(rollup_request["data"])

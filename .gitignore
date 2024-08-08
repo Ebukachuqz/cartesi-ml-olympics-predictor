@@ -1,2 +1,4 @@
-.cartesi
 .venv
+venv
+.cartesi
+__pycache__

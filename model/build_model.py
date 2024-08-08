@@ -1,49 +1,55 @@
+import json
 import pandas as pd
-import m2cgen as m2c
+from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error
+import m2cgen as m2c
 
-def build_and_export_model(teams_file, output_file):
-    # Load the teams data
-    teams = pd.read_csv(teams_file)
+# Load the dataset
+teams = pd.read_csv("teams.csv")
 
-    # Select relevant columns
-    teams = teams[["team", "country", "year", "athletes", "age", "prev_medals", "medals"]]
+# Select relevant columns
+teams = teams[["team", "athletes", "prev_medals", "medals", "year"]]
 
-    # Drop rows with missing values
-    teams = teams.dropna()
+# Drop rows with missing values
+teams = teams.dropna()
 
-    # Split data into training and test sets
-    train = teams[teams["year"] < 2012].copy()
-    test = teams[teams["year"] >= 2012].copy()
+# Create a mapping for the 'team' column
+team_mapping = {team: idx for idx, team in enumerate(teams['team'].unique())}
+teams['team'] = teams['team'].map(team_mapping)
 
-    # Define and train the linear regression model
-    reg = LinearRegression()
-    predictors = ["athletes", "prev_medals"]
-    reg.fit(train[predictors], train["medals"])
+# Split data into training and test sets
+train = teams[teams["year"] < 2012].copy()
+test = teams[teams["year"] >= 2012].copy()
 
-    # Make predictions on the test set
-    predictions = reg.predict(test[predictors])
-    test["predictions"] = predictions
-    test.loc[test["predictions"] < 0, "predictions"] = 0
-    test["predictions"] = test["predictions"].round()
+# Define and train the linear regression model
+predictors = ["team", "athletes", "prev_medals"]
+target = "medals"
 
-    # Evaluate the model
-    error = mean_absolute_error(test["medals"], test["predictions"])
-    print(f"Mean Absolute Error: {error}")
+reg = LinearRegression()
+reg.fit(train[predictors], train[target])
 
-    # Transpile the model to pure Python code
-    model_to_python = m2c.export_to_python(reg)
+# Make predictions on the test set
+predictions = reg.predict(test[predictors])
+test["predictions"] = predictions
+test.loc[test["predictions"] < 0, "predictions"] = 0
+test["predictions"] = test["predictions"].round()
 
-    # Gather the final model's input features/columns
-    model_columns = predictors
+# Evaluate the model
+error = mean_absolute_error(test["medals"], test["predictions"])
+print(f"Mean Absolute Error: {error}")
 
-    # Write the model to a Python file
-    with open(output_file, "w") as text_file:
-        print(f"{model_to_python}", file=text_file)
-        print(f"columns = {model_columns}", file=text_file)
+# Convert the trained model to Python code using m2cgen
+model_code = m2c.export_to_python(reg)
+print(model_code)
+print(team_mapping)
 
-    print("Model exported successfully")
+# Save the team mapping to a JSON file
+with open("team_mapping.json", "w") as file:
+    json.dump(team_mapping, file)
 
-# Example usage:
-build_and_export_model("../teams.csv", "../model.py")
+# Save the generated model code to a Python file
+with open("model.py", "w") as file:
+    file.write(model_code)
+
+print("Model exported successfully")
