@@ -21,7 +21,7 @@ def str2hex(str):
     return "0x" + str.encode("utf-8").hex()
 
 # Load the team mapping from the JSON file
-with open("team_mapping.json", "r") as file:
+with open("./team_mapping.json", "r") as file:
     team_mapping = json.load(file)
 
 def format_input(input_json):
@@ -42,7 +42,7 @@ def handle_advance(data):
     status = "accept"
     try:
         input_data = hex2str(data["payload"])
-        sender = input_json["metadata"]["msg_sender"]
+        sender = data["metadata"]["msg_sender"]
         input_json = json.loads(input_data)
 
         # format input data
@@ -59,7 +59,7 @@ def handle_advance(data):
         })
         
         output = str2hex(str(prediction))
-        logger.info(f"Adding notice with payload: {predicted}")
+        logger.info(f"Adding notice with payload: {prediction}")
         response = requests.post(rollup_server + "/notice", json={"payload": output})
         logger.info(f"Received notice status {response.status_code} body {response.content}")
     except Exception as e:
