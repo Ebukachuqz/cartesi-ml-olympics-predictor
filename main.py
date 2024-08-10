@@ -49,7 +49,7 @@ def handle_advance(data):
         formatted_data = format_input(input_json)
 
         # Use the formatted data to make a prediction
-        prediction = score(formatted_data)
+        prediction = round(score(formatted_data))
         
         # Store sender, input, and prediction
         user_predictions.append({
